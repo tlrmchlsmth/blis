@@ -33,6 +33,7 @@
 */
 
 #include "blis.h"
+#include "carousel.h"
 
 void bli_gemm_blk_var3f( obj_t*  a,
                          obj_t*  b,
@@ -49,9 +50,9 @@ void bli_gemm_blk_var3f( obj_t*  a,
     obj_t* b1_pack = NULL;
     obj_t* c_pack = NULL;
 
-	dim_t  i;
 	dim_t  b_alg;
 	dim_t  k_trans;
+
 
     if( thread_am_ochief( thread ) ){
         // Initialize object for packing C
@@ -79,17 +80,34 @@ void bli_gemm_blk_var3f( obj_t*  a,
 	               cntx, cntl_sub_packm_c( cntl ),
                    gemm_thread_sub_opackm( thread ) );
 
+    //Setup horses
+    horse_t horse_s[thread->n_way];
+    horse_t *horses;
+    if( thread_am_ochief( thread ) ){
+        for( int i = 0; i < thread->n_way; i++ ){
+            setup_horse( &horse_s[i] );
+        }
+    }
+    horses = thread_obroadcast( thread, &horse_s[0] );
+
+
 	// Query dimension in partitioning direction.
 	k_trans = bli_obj_width_after_trans( *a );
 
+    dim_t my_start, my_end;
+    bli_get_range_l2r( thread, a,
+                       bli_cntx_get_bmult( cntl_bszid( cntl ), cntx ),
+                       &my_start, &my_end );
+    
+    //printf("%d\t%d\t%d\t%d\n", k_trans, my_start, my_end, thread->work_id);
 	// Partition along the k dimension.
-	for ( i = 0; i < k_trans; i += b_alg )
+	for ( dim_t i = my_start; i < my_end; i += b_alg )
 	{
 		// Determine the current algorithmic blocksize.
 		// NOTE: We call a gemm/hemm/symm-specific function to determine
 		// the kc blocksize so that we can implement the "nudging" of kc
 		// to be a multiple of mr or nr, as needed.
-		b_alg = bli_gemm_determine_kc_f( i, k_trans, a, b,
+		b_alg = bli_gemm_determine_kc_f( i, my_end, a, b,
 		                                 cntl_bszid( cntl ), cntx );
 
 		// Acquire partitions for A1 and B1.
@@ -118,6 +136,8 @@ void bli_gemm_blk_var3f( obj_t*  a,
                        gemm_thread_sub_ipackm( thread ) );
 
 		// Perform gemm subproblem.
+       /* mount_horse( &horses[0] );
+        printf("work id %d\n starting\n", thread->work_id );
 		bli_gemm_int( &BLIS_ONE,
 		              a1_pack,
 		              b1_pack,
@@ -125,7 +145,12 @@ void bli_gemm_blk_var3f( obj_t*  a,
 		              c_pack,
 		              cntx,
 		              cntl_sub_gemm( cntl ),
-                      gemm_thread_sub_gemm( thread) );
+                      gemm_thread_sub_gemm( thread) ); 
+        printf("work id %d\n done\n", thread->work_id );
+        unmount_horse( &horses[0] );*/
+
+        mutex_carousel( horses, thread->n_way, thread->work_id, CAROUSEL_DIR_M,
+                        (l3_int_t) bli_gemm_int, &BLIS_ONE, a1_pack, b1_pack, &BLIS_ONE, c_pack, cntx, cntl_sub_gemm( cntl ), (thrinfo_t*) gemm_thread_sub_gemm( thread ) );
 
 		// This variant executes multiple rank-k updates. Therefore, if the
 		// internal beta scalar on matrix C is non-zero, we must use it
@@ -133,8 +158,8 @@ void bli_gemm_blk_var3f( obj_t*  a,
 		// And since c_pack is a local obj_t, we can simply overwrite the
 		// internal beta scalar with BLIS_ONE once it has been used in the
 		// first iteration.
-        thread_ibarrier( thread );
-		if ( i == 0 && thread_am_ichief( thread ) ) bli_obj_scalar_reset( c_pack );
+        //thread_ibarrier( thread );
+		//if ( i == 0 && thread_am_ichief( thread ) ) bli_obj_scalar_reset( c_pack );
 
 	}
 
@@ -154,4 +179,3 @@ void bli_gemm_blk_var3f( obj_t*  a,
         bli_packm_release( b1_pack, cntl_sub_packm_b( cntl ) );
     }
 }
-
