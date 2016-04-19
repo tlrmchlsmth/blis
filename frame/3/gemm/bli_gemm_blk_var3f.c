@@ -85,7 +85,7 @@ void bli_gemm_blk_var3f( obj_t*  a,
     horse_t *horses;
     if( thread_am_ochief( thread ) ){
         for( int i = 0; i < thread->n_way; i++ ){
-            setup_horse( &horse_s[i] );
+            setup_horse( &horse_s[i], i );
         }
     }
     horses = thread_obroadcast( thread, &horse_s[0] );

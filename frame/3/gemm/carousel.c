@@ -2,46 +2,54 @@
 #include "carousel.h"
 
 #ifdef BLIS_ENABLE_OPENMP
-void setup_horse( horse_t* horse )
+void setup_horse( horse_t* horse, int init_rider )
 {
-    omp_init_lock( &horse->mutex );
+    horse->next_rider = init_rider;
+//    omp_init_lock( &horse->mutex );
 }
 
 void cleanup_horse( horse_t* horse )
 {
-    omp_destroy_lock( &horse->mutex );
+//    omp_destroy_lock( &horse->mutex );
 }
 
-void mount_horse( horse_t* horse )
+void mount_horse( horse_t* horse, int rider_id )
 {
-    omp_set_lock( &horse->mutex );
+    volatile int *listener = &horse->next_rider;
+    while( *listener != rider_id) { };
+//    omp_set_lock( &horse->mutex );
 }
 
-void unmount_horse( horse_t* horse )
+void unmount_horse( horse_t* horse, int n_riders )
 {
-    omp_unset_lock( &horse->mutex );
+    horse->next_rider = (horse->next_rider + 1) % n_riders;
+//    omp_unset_lock( &horse->mutex );
 }
 #endif
 
 #ifdef BLIS_ENABLE_PTHREADS
-void setup_horse( horse_t* horse )
+void setup_horse( horse_t* horse, int init_rider )
 {
-    pthread_mutex_init( &horse->mutex, NULL );
+    horse->next_rider = init_rider;
+//    pthread_mutex_init( &horse->mutex, NULL );
 }
 
 void cleanup_horse( horse_t* horse )
 {
-    pthread_mutex_destroy( &horse->mutex );
+//    pthread_mutex_destroy( &horse->mutex );
 }
 
-void mount_horse( horse_t* horse )
+void mount_horse( horse_t* horse, int rider_id )
 {
-    pthread_mutex_lock( &horse->mutex );
+    volatile int *listener = &horse->next_rider;
+    while( *listener != rider_id) { };
+//    pthread_mutex_lock( &horse->mutex );
 }
 
-void unmount_horse( horse_t* horse )
+void unmount_horse( horse_t* horse, int n_riders )
 {
-    pthread_mutex_unlock( &horse->mutex );
+    horse->next_rider = (horse->next_rider + 1) % n_riders;
+//    pthread_mutex_unlock( &horse->mutex );
 }
 #endif
 
@@ -67,14 +75,14 @@ void mutex_carousel( horse_t* horses, dim_t n_horses, dim_t work_id, carousel_di
             bli_acquire_mpart_t2b( BLIS_SUBPART1, start, end-start, c, &c1 );
             
             if(thread_am_ochief( thread ) ){
-                mount_horse( &horses[i] );
+                mount_horse( &horses[i], work_id );
             }
             thread_obarrier( thread );
             
             subproblem( alpha, &a1, b, &BLIS_ONE, &c1, cntx, cntl, thread );
 
             if(thread_am_ochief( thread ) ){
-                unmount_horse( &horses[i] );
+                unmount_horse( &horses[i], n_horses );
             }
         }
         for( int i = 0; i < work_id; i++ )
@@ -86,14 +94,14 @@ void mutex_carousel( horse_t* horses, dim_t n_horses, dim_t work_id, carousel_di
             bli_acquire_mpart_t2b( BLIS_SUBPART1, start, end-start, c, &c1 );
 
             if(thread_am_ochief( thread ) ){
-                mount_horse( &horses[i] );
+                mount_horse( &horses[i], work_id );
             }
             thread_obarrier( thread );
             
             subproblem( alpha, &a1, b, &BLIS_ONE, &c1, cntx, cntl, thread );
 
             if(thread_am_ochief( thread ) ){
-                unmount_horse( &horses[i] );
+                unmount_horse( &horses[i], n_horses );
             }
         }
     }

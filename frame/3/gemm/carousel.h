@@ -1,11 +1,13 @@
 #ifdef BLIS_ENABLE_OPENMP
 struct horse_s {
+    int next_rider;
     omp_lock_t mutex;
 };
 #endif
 
 #ifdef BLIS_ENABLE_PTHREADS
 struct horse_s {
+    int next_rider;
     pthread_mutex_t mutex;
 };
 #endif
@@ -20,10 +22,10 @@ enum carousel_dir_e
 };
 typedef enum carousel_dir_e carousel_dir_t;
 
-void setup_horse( horse_t* horse );
+void setup_horse( horse_t* horse, int init_rider );
 void cleanup_horse( horse_t* horse );
-void mount_horse( horse_t* horse );
-void unmount_horse( horse_t* horse );
+void mount_horse( horse_t* horse, int rider_id );
+void unmount_horse( horse_t* horse, int num_riders );
 
 
 void mutex_carousel( horse_t* horses, dim_t n_horses, dim_t work_id, carousel_dir_t direction,
