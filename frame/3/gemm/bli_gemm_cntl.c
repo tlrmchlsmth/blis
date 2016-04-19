@@ -96,7 +96,7 @@ void bli_gemm_cntl_init()
 	                          BLIS_MC,
 	                          NULL,
 	                          gemm_packa_cntl,
-	                          gemm_packb_cntl,
+	                          NULL,
 	                          NULL,
 	                          gemm_cntl_bp_ke,
 	                          NULL );
@@ -110,7 +110,7 @@ void bli_gemm_cntl_init()
 	                          BLIS_KC,
 	                          NULL,
 	                          NULL,
-	                          NULL,
+	                          gemm_packb_cntl,
 	                          NULL,
 	                          gemm_cntl_op_bp,
 	                          NULL );
