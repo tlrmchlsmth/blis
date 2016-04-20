@@ -42,30 +42,14 @@ void bli_gemm_blk_var3f( obj_t*  a,
                          gemm_t* cntl,
                          gemm_thrinfo_t* thread )
 {
-    obj_t  c_pack_s;
     obj_t  a1_pack_s, b1_pack_s;
 
     obj_t  a1, b1;
     obj_t* a1_pack = NULL;
     obj_t* b1_pack = NULL;
-    obj_t* c_pack = NULL;
 
 	dim_t  b_alg;
 	dim_t  k_trans;
-
-
-    if( thread_am_ochief( thread ) ){
-        // Initialize object for packing C
-	    bli_obj_init_pack( &c_pack_s );
-        bli_packm_init( c, &c_pack_s,
-                        cntx, cntl_sub_packm_c( cntl ) );
-
-        // Scale C by beta (if instructed).
-        bli_scalm_int( &BLIS_ONE,
-                       c,
-                       cntx, cntl_sub_scalm( cntl ) );
-    }
-    c_pack = thread_obroadcast( thread, &c_pack_s );
 
     // Initialize pack objects for A and B that are passed into packm_init().
     if( thread_am_ichief( thread ) ){
@@ -74,11 +58,6 @@ void bli_gemm_blk_var3f( obj_t*  a,
     }
     a1_pack = thread_ibroadcast( thread, &a1_pack_s );
     b1_pack = thread_ibroadcast( thread, &b1_pack_s );
-
-	// Pack C (if instructed).
-	bli_packm_int( c, c_pack,
-	               cntx, cntl_sub_packm_c( cntl ),
-                   gemm_thread_sub_opackm( thread ) );
 
     //Setup horses
     horse_t horse_s[thread->n_way];
@@ -142,7 +121,7 @@ void bli_gemm_blk_var3f( obj_t*  a,
 		              a1_pack,
 		              b1_pack,
 		              &BLIS_ONE,
-		              c_pack,
+		              c,
 		              cntx,
 		              cntl_sub_gemm( cntl ),
                       gemm_thread_sub_gemm( thread) ); 
@@ -150,7 +129,7 @@ void bli_gemm_blk_var3f( obj_t*  a,
         unmount_horse( &horses[0] );*/
 
         mutex_carousel( horses, thread->n_way, thread->work_id, CAROUSEL_DIR_M,
-                        (l3_int_t) bli_gemm_int, &BLIS_ONE, a1_pack, b1_pack, &BLIS_ONE, c_pack, cntx, cntl_sub_gemm( cntl ), (thrinfo_t*) gemm_thread_sub_gemm( thread ) );
+                        (l3_int_t) bli_gemm_int, &BLIS_ONE, a1_pack, b1_pack, &BLIS_ONE, c, cntx, cntl_sub_gemm( cntl ), (thrinfo_t*) gemm_thread_sub_gemm( thread ) );
 
 		// This variant executes multiple rank-k updates. Therefore, if the
 		// internal beta scalar on matrix C is non-zero, we must use it
@@ -166,16 +145,8 @@ void bli_gemm_blk_var3f( obj_t*  a,
 	}
 
     thread_obarrier( thread );
-
-	// Unpack C (if C was packed).
-    bli_unpackm_int( c_pack, c,
-                     cntx, cntl_sub_unpackm_c( cntl ),
-                     gemm_thread_sub_opackm( thread ) );
-
 	// If any packing buffers were acquired within packm, release them back
 	// to the memory manager.
-    if( thread_am_ochief( thread ) )
-        bli_packm_release( c_pack, cntl_sub_packm_c( cntl ) );
     if( thread_am_ichief( thread ) ){
         bli_packm_release( a1_pack, cntl_sub_packm_a( cntl ) );
         bli_packm_release( b1_pack, cntl_sub_packm_b( cntl ) );

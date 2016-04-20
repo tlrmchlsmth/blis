@@ -34,13 +34,14 @@
 
 #include "blis.h"
 
-void bli_gemm_blk_var1f( obj_t*  a,
+void bli_gemm_blk_var1f_overlap( obj_t*  a,
                          obj_t*  b,
                          obj_t*  c,
                          cntx_t* cntx,
                          gemm_t* cntl,
                          gemm_thrinfo_t* thread )
 {
+    //The s is for "lives on the stack"
     obj_t a1_pack_s, c1_pack_s;
 
     obj_t a1, c1;

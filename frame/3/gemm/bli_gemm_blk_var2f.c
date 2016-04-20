@@ -41,30 +41,15 @@ void bli_gemm_blk_var2f( obj_t*  a,
                          gemm_t* cntl,
                          gemm_thrinfo_t* thread )
 {
-	obj_t a_pack_s;
     obj_t b1_pack_s, c1_pack_s;
 
     obj_t b1, c1;
-    obj_t*  a_pack = NULL;
 	obj_t*  b1_pack = NULL;
 	obj_t*  c1_pack = NULL;
 
 	dim_t i;
 	dim_t b_alg;
 
-
-    if( thread_am_ochief( thread ) ) {
-        // Initialize object for packing A
-	    bli_obj_init_pack( &a_pack_s );
-        bli_packm_init( a, &a_pack_s,
-                        cntx, cntl_sub_packm_a( cntl ) );
-
-        // Scale C by beta (if instructed).
-        bli_scalm_int( &BLIS_ONE,
-                       c,
-                       cntx, cntl_sub_scalm( cntl ) );
-    }
-    a_pack = thread_obroadcast( thread, &a_pack_s );
 
 	// Initialize pack objects for B and C that are passed into packm_init().
     if( thread_am_ichief( thread ) ) {
@@ -73,11 +58,6 @@ void bli_gemm_blk_var2f( obj_t*  a,
     }
     b1_pack = thread_ibroadcast( thread, &b1_pack_s );
     c1_pack = thread_ibroadcast( thread, &c1_pack_s );
-
-	// Pack A (if instructed).
-	bli_packm_int( a, a_pack,
-	               cntx, cntl_sub_packm_a( cntl ),
-                   gemm_thread_sub_opackm( thread ) );
 
     dim_t my_start, my_end;
     bli_get_range_l2r( thread, b,
@@ -121,7 +101,7 @@ void bli_gemm_blk_var2f( obj_t*  a,
 
 		// Perform gemm subproblem.
 		bli_gemm_int( &BLIS_ONE,
-		              a_pack,
+		              a,
 		              b1_pack,
 		              &BLIS_ONE,
 		              c1_pack,
@@ -141,8 +121,6 @@ void bli_gemm_blk_var2f( obj_t*  a,
 	// If any packing buffers were acquired within packm, release them back
 	// to the memory manager.
     thread_obarrier( thread );
-    if( thread_am_ochief( thread ) )
-    	bli_packm_release( a_pack, cntl_sub_packm_a( cntl ) );
     if( thread_am_ichief( thread ) ) {
         bli_packm_release( b1_pack, cntl_sub_packm_b( cntl ) );
         bli_packm_release( c1_pack, cntl_sub_packm_c( cntl ) );
