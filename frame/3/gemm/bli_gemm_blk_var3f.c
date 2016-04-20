@@ -158,8 +158,10 @@ void bli_gemm_blk_var3f( obj_t*  a,
 		// And since c_pack is a local obj_t, we can simply overwrite the
 		// internal beta scalar with BLIS_ONE once it has been used in the
 		// first iteration.
-        //thread_ibarrier( thread );
-		//if ( i == 0 && thread_am_ichief( thread ) ) bli_obj_scalar_reset( c_pack );
+        // This must happen during the carousel
+		// if ( i == 0 && thread_am_ichief( thread ) ) bli_obj_scalar_reset( c_pack );
+
+        thread_ibarrier( thread );
 
 	}
 
