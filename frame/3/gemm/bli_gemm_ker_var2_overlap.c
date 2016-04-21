@@ -33,7 +33,7 @@
 */
 
 #include "blis.h"
-
+#include "bli_packm_cxk.h"
 #define FUNCPTR_T gemm_fp
 
 typedef void (*FUNCPTR_T)(
@@ -43,52 +43,54 @@ typedef void (*FUNCPTR_T)(
                            dim_t   n,
                            dim_t   k,
                            void*   alpha,
-                           void*   a, inc_t cs_a, inc_t is_a,
-                                      dim_t pd_a, inc_t ps_a,
+                           void*   a_pack, inc_t cs_a_pack, inc_t is_a_pack,
+                                      dim_t pd_a_pack, inc_t ps_a_pack,
                            void*   b_orig, inc_t rs_b_orig, inc_t cs_b_orig,
-                           void*   b, inc_t rs_b, inc_t is_b,
-                                      dim_t pd_b, inc_t ps_b,
+                           void*   b_pack, inc_t rs_b_pack, inc_t is_b_pack,
+                                      dim_t pd_b_pack, inc_t ps_b_pack,
+                           bool_t  pack_b,
                            void*   beta,
                            void*   c, inc_t rs_c, inc_t cs_c,
-                           cntx_t* cntx,
+                           void*   gemm_ukr,
                            gemm_thrinfo_t* thread
                          );
 
-static FUNCPTR_T GENARRAY(ftypes,gemm_ker_var2);
+static FUNCPTR_T GENARRAY(ftypes,gemm_ker_var2_overlap);
 
 
-void bli_gemm_ker_var2( obj_t*  a,
+void bli_gemm_ker_var2_overlap( obj_t*  a,
                         obj_t*  b,
                         obj_t*  c,
                         cntx_t* cntx,
                         gemm_t* cntl,
                         gemm_thrinfo_t* thread )
 {
+    bool_t  pack_b = 1;
 	num_t     dt_exec   = bli_obj_execution_datatype( *c );
 
-	pack_t    schema_a  = bli_obj_pack_schema( *a );
-	pack_t    schema_b  = bli_obj_pack_schema( *b );
+	pack_t    schema_a  = bli_obj_pack_schema( *a_pack );
+	pack_t    schema_b  = bli_obj_pack_schema( *b_pack );
 
 	dim_t     m         = bli_obj_length( *c );
 	dim_t     n         = bli_obj_width( *c );
-	dim_t     k         = bli_obj_width( *a );
+	dim_t     k         = bli_obj_width( *a_pack );
 
-	void*     buf_a     = bli_obj_buffer_at_off( *a );
-	inc_t     cs_a      = bli_obj_col_stride( *a );
-	inc_t     is_a      = bli_obj_imag_stride( *a );
-	dim_t     pd_a      = bli_obj_panel_dim( *a );
-	inc_t     ps_a      = bli_obj_panel_stride( *a );
+	void*     buf_a_pack     = bli_obj_buffer_at_off( *a_pack );
+	inc_t     cs_a_pack      = bli_obj_col_stride( *a_pack );
+	inc_t     is_a_pack      = bli_obj_imag_stride( *a_pack );
+	dim_t     pd_a_pack      = bli_obj_panel_dim( *a_pack );
+	inc_t     ps_a_pack      = bli_obj_panel_stride( *a_pack );
 
-    obj_t*    b_orig    = cntx->b_packs[pthread_self()];
+    obj_t* b_orig = cntx->b_packs[ omp_get_thread_num() ];
 	void*     buf_b_orig = bli_obj_buffer_at_off( *b_orig );
     inc_t     rs_b_orig  = bli_obj_row_stride( *b_orig );
     inc_t     cs_b_orig  = bli_obj_col_stride( *b_orig );
 
-	void*     buf_b     = bli_obj_buffer_at_off( *b );
-	inc_t     rs_b      = bli_obj_row_stride( *b );
-	inc_t     is_b      = bli_obj_imag_stride( *b );
-	dim_t     pd_b      = bli_obj_panel_dim( *b );
-	inc_t     ps_b      = bli_obj_panel_stride( *b );
+	void*     buf_b_pack = bli_obj_buffer_at_off( *b_pack );
+	inc_t     rs_b_pack  = bli_obj_row_stride( *b_pack );
+	inc_t     is_b_pack  = bli_obj_imag_stride( *b_pack );
+	dim_t     pd_b_pack  = bli_obj_panel_dim( *b_pack );
+	inc_t     ps_b_pack  = bli_obj_panel_stride( *b_pack );
 
 	void*     buf_c     = bli_obj_buffer_at_off( *c );
 	inc_t     rs_c      = bli_obj_row_stride( *c );
@@ -102,9 +104,13 @@ void bli_gemm_ker_var2( obj_t*  a,
 
 	FUNCPTR_T f;
 
+	func_t*   gemm_ukrs;
+	void*     gemm_ukr;
+
+
 	// Detach and multiply the scalars attached to A and B.
-	bli_obj_scalar_detach( a, &scalar_a );
-	bli_obj_scalar_detach( b, &scalar_b );
+	bli_obj_scalar_detach( a_pack, &scalar_a );
+	bli_obj_scalar_detach( b_pack, &scalar_b );
 	bli_mulsc( &scalar_a, &scalar_b );
 
 	// Grab the addresses of the internal scalar buffers for the scalar
@@ -116,6 +122,12 @@ void bli_gemm_ker_var2( obj_t*  a,
 	// function pointer.
 	f = ftypes[dt_exec];
 
+	// Extract from the control tree node the func_t object containing
+	// the gemm micro-kernel function addresses, and then query the
+	// function address corresponding to the current datatype.
+	gemm_ukrs = cntl_gemm_ukrs( cntl );
+	gemm_ukr  = bli_func_obj_query( dt_exec, gemm_ukrs );
+
 	// Invoke the function.
 	f( schema_a,
 	   schema_b,
@@ -123,68 +135,66 @@ void bli_gemm_ker_var2( obj_t*  a,
 	   n,
 	   k,
 	   buf_alpha,
-	   buf_a, cs_a, is_a,
-	          pd_a, ps_a,
-	   buf_b, rs_b, is_b,
-	          pd_b, ps_b,
+	   buf_a_pack, cs_a_pack, is_a_pack,
+	          pd_a_pack, ps_a_pack,
+       buf_b_orig, cs_b_orig, rs_b_orig,
+	   buf_b_pack, rs_b_pack, is_b_pack,
+	          pd_b_pack, ps_b_pack,
+       pack_b,
 	   buf_beta,
 	   buf_c, rs_c, cs_c,
-	   cntx,
+	   gemm_ukr,
 	   thread );
 }
 
 
 #undef  GENTFUNC
-#define GENTFUNC( ctype, ch, varname ) \
+#define GENTFUNC( ctype, ch, varname, ukrtype ) \
 \
-void PASTEMAC(ch,varname) \
-     ( \
-       pack_t  schema_a, \
-       pack_t  schema_b, \
-       dim_t   m, \
-       dim_t   n, \
-       dim_t   k, \
-       void*   alpha, \
-       void*   a, inc_t cs_a, inc_t is_a, \
-                  dim_t pd_a, inc_t ps_a, \
-       void*   b_orig, inc_t rs_b_orig, inc_t cs_b_orig, \
-       void*   b, inc_t rs_b, inc_t is_b, \
-                  dim_t pd_b, inc_t ps_b, \
-       void*   beta, \
-       void*   c, inc_t rs_c, inc_t cs_c, \
-       cntx_t* cntx, \
-       gemm_thrinfo_t* thread  \
-     ) \
+void PASTEMAC(ch,varname)( \
+                           pack_t  schema_a, \
+                           pack_t  schema_b, \
+                           dim_t   m, \
+                           dim_t   n, \
+                           dim_t   k, \
+                           void*   alpha, \
+                           void*   a_pack, inc_t cs_a_pack, inc_t is_a_pack, \
+                                      dim_t pd_a_pack, inc_t ps_a_pack, \
+                           void*   b_orig, inc_t rs_b_orig, inc_t cs_b_orig, \
+                           void*   b_pack, inc_t rs_b_pack, inc_t is_b_pack, \
+                                      dim_t pd_b_pack, inc_t ps_b_pack, \
+                           bool_t  pack_b, \
+                           void*   beta, \
+                           void*   c, inc_t rs_c, inc_t cs_c, \
+                           void*   gemm_ukr,  \
+                           gemm_thrinfo_t* thread \
+                         ) \
 { \
-	const num_t     dt         = PASTEMAC(ch,type); \
+	/* Cast the micro-kernel address to its function pointer type. */ \
+	PASTECH(ch,ukrtype) gemm_ukr_cast = gemm_ukr; \
+\
+	/* Temporary C buffer for edge cases. */ \
+	ctype           ct[ PASTEMAC(ch,maxmr) * \
+	                    PASTEMAC(ch,maxnr) ] \
+	                    __attribute__((aligned(BLIS_STACK_BUF_ALIGN_SIZE))); \
+	const inc_t     rs_ct      = 1; \
+	const inc_t     cs_ct      = PASTEMAC(ch,maxmr); \
 \
 	/* Alias some constants to simpler names. */ \
-	const dim_t     MR         = pd_a; \
-	const dim_t     NR         = pd_b; \
+	const dim_t     MR         = pd_a_pack; \
+	const dim_t     NR         = pd_b_pack; \
 	/*const dim_t     PACKMR     = cs_a;*/ \
 	/*const dim_t     PACKNR     = rs_b;*/ \
 \
-	/* Query the context for the micro-kernel address and cast it to its
-	   function pointer type. */ \
-	PASTECH(ch,gemm_ukr_ft) \
-	                gemm_ukr   = bli_cntx_get_l3_ukr_dt( dt, BLIS_GEMM_UKR, cntx ); \
-\
-	/* Temporary C buffer for edge cases. */ \
-	ctype           ct[ BLIS_STACK_BUF_MAX_SIZE \
-	                    / sizeof( ctype ) ] \
-	                    __attribute__((aligned(BLIS_STACK_BUF_ALIGN_SIZE))); \
-	const inc_t     rs_ct      = 1; \
-	const inc_t     cs_ct      = MR; \
-\
 	ctype* restrict zero       = PASTEMAC(ch,0); \
-	ctype* restrict a_cast     = a; \
-	ctype* restrict b_cast     = b; \
+	ctype* restrict a_pack_cast     = a_pack; \
 	ctype* restrict b_orig_cast = b_orig; \
+	ctype* restrict b_pack_cast = b_pack; \
 	ctype* restrict c_cast     = c; \
 	ctype* restrict alpha_cast = alpha; \
 	ctype* restrict beta_cast  = beta; \
 	ctype* restrict b_orig_1; \
-	ctype* restrict b1; \
+	ctype* restrict b_pack_1; \
 	ctype* restrict c1; \
 \
 	dim_t           m_iter, m_left; \
@@ -192,9 +202,9 @@ void PASTEMAC(ch,varname) \
 	dim_t           i, j; \
 	dim_t           m_cur; \
 	dim_t           n_cur; \
-	inc_t           rstep_a; \
+	inc_t           rstep_a_pack; \
 	inc_t           cstep_b_orig; \
-	inc_t           cstep_b; \
+	inc_t           cstep_b_pack; \
 	inc_t           rstep_c, cstep_c; \
 	auxinfo_t       aux; \
 \
@@ -231,9 +241,10 @@ void PASTEMAC(ch,varname) \
 	if ( m_left ) ++m_iter; \
 \
 	/* Determine some increments used to step through A, B, and C. */ \
-	rstep_a = ps_a; \
+	rstep_a_pack = ps_a_pack; \
 \
-	cstep_b = ps_b; \
+	cstep_b_orig = rs_b_orig * NR; \
+	cstep_b_pack = ps_b_pack; \
 \
 	rstep_c = rs_c * MR; \
 	cstep_c = cs_c * NR; \
@@ -243,8 +254,8 @@ void PASTEMAC(ch,varname) \
 	bli_auxinfo_set_schema_b( schema_b, aux ); \
 \
 	/* Save the imaginary stride of A and B to the auxinfo_t object. */ \
-	bli_auxinfo_set_is_a( is_a, aux ); \
-	bli_auxinfo_set_is_b( is_b, aux ); \
+	bli_auxinfo_set_is_a( is_a_pack, aux ); \
+	bli_auxinfo_set_is_b( is_b_pack, aux ); \
 \
 	gemm_thrinfo_t* caucus = gemm_thread_sub_gemm( thread ); \
 	dim_t jr_num_threads = thread_n_way( thread ); \
@@ -255,46 +266,49 @@ void PASTEMAC(ch,varname) \
 	/* Loop over the n dimension (NR columns at a time). */ \
 	for ( j = jr_thread_id; j < n_iter; j += jr_num_threads ) \
 	{ \
-		ctype* restrict a1; \
+		ctype* restrict a_pack_1; \
 		ctype* restrict c11; \
 		ctype* restrict b2; \
 \
-		b1 = b_cast + j * cstep_b; \
+		b_pack_1 = b_pack_cast + j * cstep_b_pack; \
         b_orig_1 = b_orig_cast + j * cstep_b_orig; \
 		c1 = c_cast + j * cstep_c; \
 \
-        double one = 1.0;\
-        PASTEMAC(ch,packm_cxk)( \
-                 BLIS_NO_CONJUGATE, \
-                 NR, \
-                 k, \
-                 (void*) &one, \
-                 b_orig_1, rs_b_orig, cs_b_orig, \
-                 b_pack_1, pd_b_pack );\
+        /* Assertion: Pack the micro-panel of B if instructed */ \
+        if( pack_b ) { \
+            double one = 1.0;\
+            PASTEMAC(ch,packm_cxk)( \
+                BLIS_NO_CONJUGATE, \
+                NR, \
+                k, \
+                (void*) &one, \
+                b_orig_1, rs_b_orig, cs_b_orig, \
+                b_pack_1, pd_b_pack );\
+        } \
+\
 \
 		n_cur = ( bli_is_not_edge_f( j, n_iter, n_left ) ? NR : n_left ); \
 \
 		/* Initialize our next panel of B to be the current panel of B. */ \
-		b2 = b1; \
+		b2 = b_pack_1; \
 \
 		/* Loop over the m dimension (MR rows at a time). */ \
 		for ( i = ir_thread_id; i < m_iter; i += ir_num_threads ) \
 		{ \
 			ctype* restrict a2; \
 \
-			a1  = a_cast + i * rstep_a; \
+			a_pack_1 = a_pack_cast + i * rstep_a_pack; \
 			c11 = c1     + i * rstep_c; \
-\
 			m_cur = ( bli_is_not_edge_f( i, m_iter, m_left ) ? MR : m_left ); \
 \
 			/* Compute the addresses of the next panels of A and B. */ \
-			a2 = gemm_get_next_a_micropanel( caucus, a1, rstep_a ); \
+			a2 = gemm_get_next_a_micropanel( caucus, a_pack_1, rstep_a_pack ); \
 			if ( bli_is_last_iter( i, m_iter, ir_thread_id, ir_num_threads ) ) \
 			{ \
-				a2 = a_cast; \
-				b2 = gemm_get_next_b_micropanel( thread, b1, cstep_b ); \
+				a2 = a_pack_cast; \
+				b2 = gemm_get_next_b_micropanel( thread, b_pack_1, cstep_b_pack ); \
 				if ( bli_is_last_iter( j, n_iter, jr_thread_id, jr_num_threads ) ) \
-					b2 = b_cast; \
+					b2 = b_pack_cast; \
 			} \
 \
 			/* Save addresses of next panels of A and B to the auxinfo_t
@@ -306,32 +320,24 @@ void PASTEMAC(ch,varname) \
 			if ( m_cur == MR && n_cur == NR ) \
 			{ \
 				/* Invoke the gemm micro-kernel. */ \
-				gemm_ukr \
-				( \
-				  k, \
-				  alpha_cast, \
-				  a1, \
-				  b1, \
-				  beta_cast, \
-				  c11, rs_c, cs_c, \
-				  &aux, \
-				  cntx  \
-				); \
+				gemm_ukr_cast( k, \
+				               alpha_cast, \
+				               a_pack_1, \
+				               b_pack_1, \
+				               beta_cast, \
+				               c11, rs_c, cs_c, \
+				               &aux ); \
 			} \
 			else \
 			{ \
 				/* Invoke the gemm micro-kernel. */ \
-				gemm_ukr \
-				( \
-				  k, \
-				  alpha_cast, \
-				  a1, \
-				  b1, \
-				  zero, \
-				  ct, rs_ct, cs_ct, \
-				  &aux, \
-				  cntx  \
-				); \
+				gemm_ukr_cast( k, \
+				               alpha_cast, \
+				               a_pack_1, \
+				               b_pack_1, \
+				               zero, \
+				               ct, rs_ct, cs_ct, \
+				               &aux ); \
 \
 				/* Scale the bottom edge of C and add the result from above. */ \
 				PASTEMAC(ch,xpbys_mxn)( m_cur, n_cur, \
@@ -342,10 +348,9 @@ void PASTEMAC(ch,varname) \
 		} \
 	} \
 \
-/*PASTEMAC(ch,fprintm)( stdout, "gemm_ker_var2: c", MR, NR, c11, rs_c, cs_c, "%4.1f", "" );*/ \
 /*PASTEMAC(ch,fprintm)( stdout, "gemm_ker_var2: b1", k, NR, b1, NR, 1, "%4.1f", "" ); \
 PASTEMAC(ch,fprintm)( stdout, "gemm_ker_var2: a1", MR, k, a1, 1, MR, "%4.1f", "" );*/ \
 }
 
-INSERT_GENTFUNC_BASIC0( gemm_ker_var2 )
+INSERT_GENTFUNC_BASIC( gemm_ker_var2_overlap, gemm_ukr_t )
 

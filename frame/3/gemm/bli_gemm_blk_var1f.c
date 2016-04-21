@@ -33,6 +33,7 @@
 */
 
 #include "blis.h"
+#include "carousel.h"
 
 void bli_gemm_blk_var1f( obj_t*  a,
                          obj_t*  b,
@@ -41,6 +42,7 @@ void bli_gemm_blk_var1f( obj_t*  a,
                          gemm_t* cntl,
                          gemm_thrinfo_t* thread )
 {
+    //The s is for "lives on the stack"
     obj_t a1_pack_s, c1_pack_s;
 
     obj_t a1, c1;
@@ -57,6 +59,16 @@ void bli_gemm_blk_var1f( obj_t*  a,
     }
     a1_pack = thread_ibroadcast( thread, &a1_pack_s );
     c1_pack = thread_ibroadcast( thread, &c1_pack_s );
+
+    //Setup camels 
+    camel_t camels_s[thread->n_way];
+    camel_t *camels;
+    if( thread_am_ochief( thread ) ){
+        for( int i = 0; i < thread->n_way; i++ ){
+            setup_camel( &camels_s[i] );
+        }
+    }
+    camels = thread_obroadcast( thread, &camels_s[0] );
 
     dim_t my_start, my_end;
     bli_get_range_t2b( thread, a,
@@ -99,7 +111,24 @@ void bli_gemm_blk_var1f( obj_t*  a,
                        gemm_thread_sub_ipackm( thread ) );
 
 		// Perform gemm subproblem.
-		bli_gemm_int( &BLIS_ONE,
+		/*bli_gemm_int( &BLIS_ONE,
+		              a1_pack,
+		              b,
+		              &BLIS_ONE,
+		              c1_pack,
+		              cntx,
+		              cntl_sub_gemm( cntl ),
+                      gemm_thread_sub_gemm( thread ) );*/
+
+        char* blah = getenv("BLIS_OVERLAP");
+        if( blah[0] == 1 ) {
+            preparation_carousel( camels, thread->n_way, thread->work_id, CAROUSEL_DIR_N,
+                                 (l3_int_t) bli_gemm_ker_var2_overlap,
+                                 (l3_int_t) bli_gemm_ker_var2, &BLIS_ONE, a1_pack, b, &BLIS_ONE, c1_pack, cntx, cntl_sub_gemm( cntl ), 
+                                 (thrinfo_t*) gemm_thread_sub_gemm( thread ) );
+        }
+        else{ 
+		    bli_gemm_int( &BLIS_ONE,
 		              a1_pack,
 		              b,
 		              &BLIS_ONE,
@@ -107,6 +136,7 @@ void bli_gemm_blk_var1f( obj_t*  a,
 		              cntx,
 		              cntl_sub_gemm( cntl ),
                       gemm_thread_sub_gemm( thread ) );
+        }
 
         thread_ibarrier( thread );
 

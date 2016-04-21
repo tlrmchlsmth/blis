@@ -59,6 +59,9 @@ void bli_gemm_blk_var3f( obj_t*  a,
     a1_pack = thread_ibroadcast( thread, &a1_pack_s );
     b1_pack = thread_ibroadcast( thread, &b1_pack_s );
 
+    cntx->b_packs[ omp_get_thread_num() ] = b1_pack;
+    
+
     //Setup horses
     horse_t horse_s[thread->n_way];
     horse_t *horses;
@@ -110,9 +113,12 @@ void bli_gemm_blk_var3f( obj_t*  a,
                        gemm_thread_sub_ipackm( thread ) );
 
 		// Pack B1 (if instructed).
+        char* blah = getenv("BLIS_OVERLAP");
+        if( blah[0] != 1 ){
 		bli_packm_int( &b1, b1_pack,
 		               cntx, cntl_sub_packm_b( cntl ),
                        gemm_thread_sub_ipackm( thread ) );
+        }
 
 		// Perform gemm subproblem.
        /* mount_horse( &horses[0] );

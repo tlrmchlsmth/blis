@@ -55,6 +55,7 @@ GENPROT( gemm_blk_var2f )
 GENPROT( gemm_blk_var3f )
 
 GENPROT( gemm_ker_var2 )
+GENPROT( gemm_ker_var2_overlap )
 
 // Headers for induced algorithms:
 GENPROT( gemm_blk_var4f ) // 3m3
@@ -88,6 +89,31 @@ void PASTEMAC(ch,varname) \
      );
 
 INSERT_GENTPROT_BASIC( gemm_ker_var2 )
+
+#undef  GENTPROT
+#define GENTPROT( ctype, ch, varname ) \
+\
+void PASTEMAC(ch,varname)( \
+                           pack_t  schema_a, \
+                           pack_t  schema_b, \
+                           dim_t   m, \
+                           dim_t   n, \
+                           dim_t   k, \
+                           void*   alpha, \
+                           void*   a, inc_t cs_a, inc_t is_a, \
+                                      dim_t pd_a, inc_t ps_a, \
+                           void*   b_orig, inc_t rs_b_orig, inc_t cs_b_orig, \
+                           void*   b_pack, inc_t rs_b_pack, inc_t is_b_pack, \
+                                      dim_t pd_b_pack, inc_t ps_b_pack, \
+                           bool_t  pack_b, \
+                           void*   beta, \
+                           void*   c, inc_t rs_c, inc_t cs_c, \
+                           void*   gemm_ukr, \
+                           gemm_thrinfo_t* thread  \
+                         );
+
+INSERT_GENTPROT_BASIC( gemm_ker_var2_overlap )
+
 
 // Headers for induced algorithms:
 INSERT_GENTPROT_BASIC( gemm_ker_var3 ) // 4m1b
