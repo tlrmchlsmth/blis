@@ -124,7 +124,7 @@ void preparation_carousel( camel_t* camels, dim_t n_camels, dim_t work_id, carou
                     cntx_t* cntx, gemm_t* cntl, thrinfo_t* thread )
 {
     thrinfo_t dummy;
-    dummy.n_way = n_horses;
+    dummy.n_way = n_camels;
     if(direction == CAROUSEL_DIR_M )
     {
         obj_t a1, c1;
@@ -144,14 +144,14 @@ void preparation_carousel( camel_t* camels, dim_t n_camels, dim_t work_id, carou
             bli_acquire_mpart_t2b( BLIS_SUBPART1, start, end-start, a, &a1 );
             bli_acquire_mpart_t2b( BLIS_SUBPART1, start, end-start, c, &c1 );
             
-            prepare_subproblem( &a1, b, &c1, cntx, cntl, thread );
+            prepare_subproblem( alpha, &a1, b, beta, &c1, cntx, cntl, thread );
 
             thread_obarrier( thread );
             if( thread_am_ochief( thread ) ) saddle_camel( &camels[work_id] );
         }
         
         //Now use other camels too
-        for( int i = work_id+1; i < n_horses; i++)
+        for( int i = work_id+1; i < n_camels; i++)
         {
             dummy.work_id = i;
             bli_get_range( &dummy, m, bf, TRUE, &start, &end );
@@ -160,7 +160,7 @@ void preparation_carousel( camel_t* camels, dim_t n_camels, dim_t work_id, carou
             bli_acquire_mpart_t2b( BLIS_SUBPART1, start, end-start, c, &c1 );
         
             wait_for_saddle( &camels[i] );
-            subproblem( alpha, &a1, b, &BLIS_ONE, &c1, cntx, cntl, thread );
+            subproblem( alpha, &a1, b, beta, &c1, cntx, cntl, thread );
         }
         for( int i = 0; i < work_id; i++ )
         {
@@ -171,10 +171,10 @@ void preparation_carousel( camel_t* camels, dim_t n_camels, dim_t work_id, carou
             bli_acquire_mpart_t2b( BLIS_SUBPART1, start, end-start, c, &c1 );
 
             wait_for_saddle( &camels[i] );
-            subproblem( alpha, &a1, b, &BLIS_ONE, &c1, cntx, cntl, thread );
+            subproblem( alpha, &a1, b, beta, &c1, cntx, cntl, thread );
         }
     }
-    else if(direction == CAROUSEL_DIR_N )
+    else if(direction == CAROUSEL_DIR_N ) {
         obj_t b1, c1;
         dim_t start, end;
         dim_t n = bli_obj_length_after_trans( *b );
@@ -190,37 +190,37 @@ void preparation_carousel( camel_t* camels, dim_t n_camels, dim_t work_id, carou
             }
         }
         else {
-            bli_acquire_mpart_l2r( BLIS_SUBPART1, start, end-start, b, &a1 );
+            bli_acquire_mpart_l2r( BLIS_SUBPART1, start, end-start, b, &b1 );
             bli_acquire_mpart_l2r( BLIS_SUBPART1, start, end-start, c, &c1 );
             
-            prepare_subproblem( &a1, b, &c1, cntx, cntl, thread, preparationDesc );
+            prepare_subproblem( alpha, a, &b1, beta, &c1, cntx, cntl, thread );
 
             thread_obarrier( thread );
             if( thread_am_ochief( thread ) ) saddle_camel( &camels[work_id] );
         }
         
         //Now use other camels too
-        for( int i = work_id+1; i < n_horses; i++)
+        for( int i = work_id+1; i < n_camels; i++)
         {
             dummy.work_id = i;
             bli_get_range( &dummy, n, bf, TRUE, &start, &end );
 
-            bli_acquire_mpart_l2r( BLIS_SUBPART1, start, end-start, b, &a1 );
+            bli_acquire_mpart_l2r( BLIS_SUBPART1, start, end-start, b, &b1 );
             bli_acquire_mpart_l2r( BLIS_SUBPART1, start, end-start, c, &c1 );
         
             wait_for_saddle( &camels[i] );
-            subproblem( alpha, &a1, b, &BLIS_ONE, &c1, cntx, cntl, thread );
+            subproblem( alpha, a, &b1, beta, &c1, cntx, cntl, thread );
         }
         for( int i = 0; i < work_id; i++ )
         {
             dummy.work_id = i;
-            bli_get_range( &dummy, m, bf, TRUE, &start, &end );
+            bli_get_range( &dummy, n, bf, TRUE, &start, &end );
 
-            bli_acquire_mpart_t2b( BLIS_SUBPART1, start, end-start, a, &a1 );
-            bli_acquire_mpart_t2b( BLIS_SUBPART1, start, end-start, c, &c1 );
+            bli_acquire_mpart_l2r( BLIS_SUBPART1, start, end-start, b, &b1 );
+            bli_acquire_mpart_l2r( BLIS_SUBPART1, start, end-start, c, &c1 );
 
             wait_for_saddle( &camels[i] );
-            subproblem( alpha, &a1, b, &BLIS_ONE, &c1, cntx, cntl, thread );
+            subproblem( alpha, a, &b1, &BLIS_ONE, &c1, cntx, cntl, thread );
         }
     }
 }

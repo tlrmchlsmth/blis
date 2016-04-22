@@ -45,7 +45,6 @@ typedef void (*FUNCPTR_T)(
                            void*   alpha,
                            void*   a, inc_t cs_a, inc_t is_a,
                                       dim_t pd_a, inc_t ps_a,
-                           void*   b_orig, inc_t rs_b_orig, inc_t cs_b_orig,
                            void*   b, inc_t rs_b, inc_t is_b,
                                       dim_t pd_b, inc_t ps_b,
                            void*   beta,
@@ -78,11 +77,6 @@ void bli_gemm_ker_var2( obj_t*  a,
 	inc_t     is_a      = bli_obj_imag_stride( *a );
 	dim_t     pd_a      = bli_obj_panel_dim( *a );
 	inc_t     ps_a      = bli_obj_panel_stride( *a );
-
-    obj_t*    b_orig    = cntx->b_packs[pthread_self()];
-	void*     buf_b_orig = bli_obj_buffer_at_off( *b_orig );
-    inc_t     rs_b_orig  = bli_obj_row_stride( *b_orig );
-    inc_t     cs_b_orig  = bli_obj_col_stride( *b_orig );
 
 	void*     buf_b     = bli_obj_buffer_at_off( *b );
 	inc_t     rs_b      = bli_obj_row_stride( *b );
@@ -147,7 +141,6 @@ void PASTEMAC(ch,varname) \
        void*   alpha, \
        void*   a, inc_t cs_a, inc_t is_a, \
                   dim_t pd_a, inc_t ps_a, \
-       void*   b_orig, inc_t rs_b_orig, inc_t cs_b_orig, \
        void*   b, inc_t rs_b, inc_t is_b, \
                   dim_t pd_b, inc_t ps_b, \
        void*   beta, \
@@ -179,11 +172,9 @@ void PASTEMAC(ch,varname) \
 	ctype* restrict zero       = PASTEMAC(ch,0); \
 	ctype* restrict a_cast     = a; \
 	ctype* restrict b_cast     = b; \
-	ctype* restrict b_orig_cast = b_orig; \
 	ctype* restrict c_cast     = c; \
 	ctype* restrict alpha_cast = alpha; \
 	ctype* restrict beta_cast  = beta; \
-	ctype* restrict b_orig_1; \
 	ctype* restrict b1; \
 	ctype* restrict c1; \
 \
@@ -193,7 +184,6 @@ void PASTEMAC(ch,varname) \
 	dim_t           m_cur; \
 	dim_t           n_cur; \
 	inc_t           rstep_a; \
-	inc_t           cstep_b_orig; \
 	inc_t           cstep_b; \
 	inc_t           rstep_c, cstep_c; \
 	auxinfo_t       aux; \
@@ -260,17 +250,7 @@ void PASTEMAC(ch,varname) \
 		ctype* restrict b2; \
 \
 		b1 = b_cast + j * cstep_b; \
-        b_orig_1 = b_orig_cast + j * cstep_b_orig; \
 		c1 = c_cast + j * cstep_c; \
-\
-        double one = 1.0;\
-        PASTEMAC(ch,packm_cxk)( \
-                 BLIS_NO_CONJUGATE, \
-                 NR, \
-                 k, \
-                 (void*) &one, \
-                 b_orig_1, rs_b_orig, cs_b_orig, \
-                 b_pack_1, pd_b_pack );\
 \
 		n_cur = ( bli_is_not_edge_f( j, n_iter, n_left ) ? NR : n_left ); \
 \

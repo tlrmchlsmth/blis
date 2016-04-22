@@ -49,7 +49,6 @@ void bli_gemm_blk_var3f( obj_t*  a,
     obj_t* b1_pack = NULL;
 
 	dim_t  b_alg;
-	dim_t  k_trans;
 
     // Initialize pack objects for A and B that are passed into packm_init().
     if( thread_am_ichief( thread ) ){
@@ -74,8 +73,6 @@ void bli_gemm_blk_var3f( obj_t*  a,
 
 
 	// Query dimension in partitioning direction.
-	k_trans = bli_obj_width_after_trans( *a );
-
     dim_t my_start, my_end;
     bli_get_range_l2r( thread, a,
                        bli_cntx_get_bmult( cntl_bszid( cntl ), cntx ),
@@ -114,7 +111,7 @@ void bli_gemm_blk_var3f( obj_t*  a,
 
 		// Pack B1 (if instructed).
         char* blah = getenv("BLIS_OVERLAP");
-        if( blah[0] != 1 ){
+        if( blah != NULL && blah[0] != 1 ){
 		bli_packm_int( &b1, b1_pack,
 		               cntx, cntl_sub_packm_b( cntl ),
                        gemm_thread_sub_ipackm( thread ) );

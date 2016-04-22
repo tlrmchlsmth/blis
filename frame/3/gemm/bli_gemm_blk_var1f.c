@@ -111,17 +111,8 @@ void bli_gemm_blk_var1f( obj_t*  a,
                        gemm_thread_sub_ipackm( thread ) );
 
 		// Perform gemm subproblem.
-		/*bli_gemm_int( &BLIS_ONE,
-		              a1_pack,
-		              b,
-		              &BLIS_ONE,
-		              c1_pack,
-		              cntx,
-		              cntl_sub_gemm( cntl ),
-                      gemm_thread_sub_gemm( thread ) );*/
-
         char* blah = getenv("BLIS_OVERLAP");
-        if( blah[0] == 1 ) {
+        if( blah != NULL && blah[0] != 1 ) {
             preparation_carousel( camels, thread->n_way, thread->work_id, CAROUSEL_DIR_N,
                                  (l3_int_t) bli_gemm_ker_var2_overlap,
                                  (l3_int_t) bli_gemm_ker_var2, &BLIS_ONE, a1_pack, b, &BLIS_ONE, c1_pack, cntx, cntl_sub_gemm( cntl ), 
