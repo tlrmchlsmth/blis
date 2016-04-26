@@ -24,18 +24,15 @@ void mutex_carousel( horse_t* horses, dim_t n_horses, dim_t work_id, carousel_di
                     cntx_t* cntx, gemm_t* cntl, thrinfo_t* thread );
 
 //Camels
-typedef void (*l3_prepare_t)
-     (   
-       obj_t* alpha,
+typedef void (*l3_int2_t)
+     (
        obj_t* a,
        obj_t* b,
-       obj_t* beta,
        obj_t* c,
        void*  cntx,
        void*  cntl,
-       void*  thread,
-       void*  some_other_shit
-     );  
+       void*  thread
+     );
 
 struct camel_s {
     int saddled;
@@ -48,6 +45,6 @@ void saddle_camel( camel_t* camel );
 void wait_for_saddle( camel_t* camel );
 
 void preparation_carousel( camel_t* camels, dim_t n_camels, dim_t work_id, carousel_dir_t direction,
-                    l3_int_t prepare_subproblem,
-                    l3_int_t subproblem, obj_t* alpha, obj_t* a, obj_t* b, obj_t* beta, obj_t* c,
+                    l3_int2_t prepare_subproblem,
+                    l3_int2_t subproblem, obj_t* a, obj_t* b, obj_t* c,
                     cntx_t* cntx, gemm_t* cntl, thrinfo_t* thread );

@@ -111,11 +111,13 @@ void bli_gemm_blk_var1f( obj_t*  a,
                        gemm_thread_sub_ipackm( thread ) );
 
 		// Perform gemm subproblem.
+        
         char* blah = getenv("BLIS_OVERLAP");
-        if( blah != NULL && blah[0] != 1 ) {
+        if( i == my_start && blah != NULL && blah[0] == '1' ) {
             preparation_carousel( camels, thread->n_way, thread->work_id, CAROUSEL_DIR_N,
-                                 (l3_int_t) bli_gemm_ker_var2_overlap,
-                                 (l3_int_t) bli_gemm_ker_var2, &BLIS_ONE, a1_pack, b, &BLIS_ONE, c1_pack, cntx, cntl_sub_gemm( cntl ), 
+                                 (l3_int2_t) bli_gemm_ker_var2_overlap,
+                                 (l3_int2_t) bli_gemm_ker_var2, 
+                                 a1_pack, b, c1_pack, cntx, cntl_sub_gemm( cntl ), 
                                  (thrinfo_t*) gemm_thread_sub_gemm( thread ) );
         }
         else{ 
@@ -128,6 +130,16 @@ void bli_gemm_blk_var1f( obj_t*  a,
 		              cntl_sub_gemm( cntl ),
                       gemm_thread_sub_gemm( thread ) );
         }
+       /* 
+        if( i == 0 )
+        {
+            bli_gemm_ker_var2_overlap( a1_pack, b, c1_pack, cntx, cntl_sub_gemm( cntl ), gemm_thread_sub_gemm( thread ) );
+        }
+        else
+        {
+            bli_gemm_ker_var2( a1_pack, b, c1_pack, cntx, cntl_sub_gemm( cntl ), gemm_thread_sub_gemm( thread ) );
+        }*/
+        
 
         thread_ibarrier( thread );
 

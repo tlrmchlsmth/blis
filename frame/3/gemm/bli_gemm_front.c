@@ -66,6 +66,12 @@ void bli_gemm_front( obj_t*  alpha,
 	bli_obj_alias_to( *b, b_local );
 	bli_obj_alias_to( *c, c_local );
 
+    if( bli_obj_has_trans( b_local ) )
+    {
+        bli_obj_induce_trans( b_local );
+        bli_obj_toggle_trans( b_local );
+    }
+
 	// An optimization: If C is stored by rows and the micro-kernel prefers
 	// contiguous columns, or if C is stored by columns and the micro-kernel
 	// prefers contiguous rows, transpose the entire operation to allow the

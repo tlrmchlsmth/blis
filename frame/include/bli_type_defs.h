@@ -908,7 +908,7 @@ typedef struct cntx_s
 	pack_t    schema_b;
 	pack_t    schema_c;
 
-    obj_t*    b_packs[ 128 ];
+    obj_t*    b_origs[ 128 ];
 
 } cntx_t;
 

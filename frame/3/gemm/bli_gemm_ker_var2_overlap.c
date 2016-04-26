@@ -79,7 +79,7 @@ void bli_gemm_ker_var2_overlap( obj_t*  a,
 	dim_t     pd_a      = bli_obj_panel_dim( *a );
 	inc_t     ps_a      = bli_obj_panel_stride( *a );
 
-    obj_t*    b_orig    = cntx->b_packs[omp_get_thread_num()];
+    obj_t*    b_orig    = cntx->b_origs[omp_get_thread_num()];
 	void*     buf_b_orig = bli_obj_buffer_at_off( *b_orig );
     inc_t     rs_b_orig  = bli_obj_row_stride( *b_orig );
     inc_t     cs_b_orig  = bli_obj_col_stride( *b_orig );
@@ -235,7 +235,7 @@ void PASTEMAC(ch,varname) \
 	rstep_a = ps_a; \
 \
 	cstep_b = ps_b; \
-	cstep_b_orig = rs_b_orig * NR; \
+	cstep_b_orig = cs_b_orig * NR; \
 \
 	rstep_c = rs_c * MR; \
 	cstep_c = cs_c * NR; \
@@ -268,10 +268,8 @@ void PASTEMAC(ch,varname) \
         double one = 1.0;\
         PASTEMAC(ch,packm_cxk)( \
                  BLIS_NO_CONJUGATE, \
-                 NR, \
-                 k, \
-                 (void*) &one, \
-                 b_orig_1, rs_b_orig, cs_b_orig, \
+                 NR, k, (void*) &one, \
+                 b_orig_1, cs_b_orig, rs_b_orig, \
                  b1, pd_b, \
                  cntx );\
 \
