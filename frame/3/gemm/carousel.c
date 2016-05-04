@@ -13,7 +13,8 @@ void cleanup_horse( horse_t* horse )
 
 void mount_horse( horse_t* horse, int rider_id )
 {
-    while( horse->next_rider != rider_id) {  }
+    volatile int* listener = &horse->next_rider;
+    while( *listener != rider_id) {  }
 }
 
 void unmount_horse( horse_t* horse, int n_riders )
